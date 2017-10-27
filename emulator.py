@@ -11,6 +11,9 @@ from numpy.matlib import repmat
 import pickle
 from sklearn.externals import joblib
 import os
+import scipy as sp
+from scipy.spatial.distance import pdist, squareform
+from update_gpparam import *
 from tvar_multivariate_G import *
 from sample_variances import *
 from preprocess_initialization import *
@@ -22,7 +25,7 @@ plt.rcParams['axes.titlesize'] = 20
 
 class emulator_cls(object):
 	def __init__(self, data, time_length, nugget = 0.5, const = 5, AR_order = 1, discount_factor = 0.9, \
-				  emulation_iter = 3, emulation_burnin = 1, MH_within_Gibbs_iter = 5, \
+				  emulation_iter = 1200, emulation_burnin = 20, MH_within_Gibbs_iter = 25, \
 				  beta_init = 1, alpha_val = 1.999):
 		self.train_inputs  = data['train_inputs']
 		self.train_outputs = data['train_outputs']
@@ -70,20 +73,25 @@ class emulator_cls(object):
 		self.beta_cur = beta_init * np.ones((self.dim_train_inputs, 1))
 		self.beta_mat[:, 0] = self.beta_cur.ravel()
 		
-		self.alpha = alpha_val * np.ones_like(self.beta_cur)
+		#self.alpha = alpha_val * np.ones_like(self.beta_cur)
+		self.alpha = alpha_val
 	
+#	def getCorrMat(self, inputs):
+#		num_inputs, dim_inputs = inputs.shape
+#		corrMat = np.zeros((num_inputs, num_inputs))
+#		for i in range(num_inputs):
+#			for j in range(num_inputs):
+#				element = 0
+#				for d in range(dim_inputs):
+#					element = element + self.beta_cur[d] * np.abs(inputs[i, d] - inputs[j, d]) ** self.alpha[d]
+#				corrMat[i, j] = np.exp(-element)
+#				corrMat[j, i] = corrMat[i, j]
+#		return corrMat
 	def getCorrMat(self, inputs):
-		num_inputs, dim_inputs = inputs.shape
-		corrMat = np.zeros((num_inputs, num_inputs))
-		for i in range(num_inputs):
-			for j in range(num_inputs):
-				element = 0
-				for d in range(dim_inputs):
-					element = element + self.beta_cur[d] * np.abs(inputs[i, d] - inputs[j, d]) ** self.alpha[d]
-				corrMat[i, j] = np.exp(-element)
-				corrMat[j, i] = corrMat[i, j]
+		pairwise_dists = squareform(pdist(inputs, 'seuclidean', V = 1/self.beta_cur.ravel()))
+		corrMat = sp.exp(-pairwise_dists ** self.alpha)
 		return corrMat
-	
+		
 	def _tvar_multivariate_G(self, corrMat):
 		
 		mu_update, Cov_update, n_update, s_update = tvar_multivariate_G(self.train_outputs_log, \
