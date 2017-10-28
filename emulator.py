@@ -18,6 +18,8 @@ from tvar_multivariate_G import *
 from sample_variances import *
 from preprocess_initialization import *
 from gpparam_score_diffLogPrior_withProdTerm import *
+from calibrator import *
+
 plt.rcParams['axes.labelsize'] = 14
 plt.rcParams['xtick.labelsize'] = 20
 plt.rcParams['ytick.labelsize'] = 20
@@ -26,7 +28,7 @@ plt.rcParams['axes.titlesize'] = 20
 class emulator_cls(object):
 	def __init__(self, data, time_length, nugget = 0.5, const = 5, AR_order = 1, discount_factor = 0.9, \
 				  emulation_iter = 1200, emulation_burnin = 20, MH_within_Gibbs_iter = 25, \
-				  beta_init = 1, alpha_val = 1.999):
+				  beta_init = 1, alpha_val = 1.999, cali_iter_factor = 100, cali_likeli_sampling_iter = 5):
 		self.train_inputs  = data['train_inputs']
 		self.train_outputs = data['train_outputs']
 		self.valid_inputs  = data['valid_inputs']
@@ -75,7 +77,11 @@ class emulator_cls(object):
 		
 		#self.alpha = alpha_val * np.ones_like(self.beta_cur)
 		self.alpha = alpha_val
-	
+		
+		# setting for calibration		
+		self.cali_iter_factor = cali_iter_factor
+		self.sd_prop_vec = np.array([10.1365629, 0.6130522, 17,4841793, 0.5461787, 0.5820872, 0.553091])
+		self.cali_likeli_sampling_iter = cali_likeli_sampling_iter
 #	def getCorrMat(self, inputs):
 #		num_inputs, dim_inputs = inputs.shape
 #		corrMat = np.zeros((num_inputs, num_inputs))
@@ -138,19 +144,24 @@ class emulator_cls(object):
 			self.emulator_param[:, :, ifit] = emulator_param_t
 			self.Err_mat[:, :, ifit] = Err_t
 			self.beta_mat[:, ifit] = self.beta_cur.ravel()
+	
+	def calibrate(self, field_data, cali_iter_factor=100, prop_factor = 0.11):
+		param_posterior = calibrator(self.train_inputs_norm, self.emulator_param, self.V_mat, self.beta_mat, self.alpha, self.const, self.nugget, field_data, self.emulation_burnin, cali_iter_factor, self.sd_prop_vec, prop_factor, self.cali_likeli_sampling_iter)
+		return param_posterior
 		
 if __name__ == '__main__':
-	data_path = os.path.join('/Users/xliu/Documents/MRC/', 
-							   'Work/Program/emulator/marian/JASA_2014_code/')
+	data_path = os.path.join('/Users/xliu/Documents/MRC/Work/Program/','emulator/python_version/emulation_python_ver/')
 	train_inputs  = data_path + 'LHCDesign_training.txt'
 	train_outputs = data_path + 'Outputs_training.txt'
 	valid_inputs  = data_path + 'LHCDesign_validation.txt'
 	valid_outputs = data_path + 'Outputs_validation.txt'
+	field_data    = data_path + 'andre_agg_estimates_London_python.txt'	
 	
 	train_inputs  = read_data_from_txt(train_inputs, is_output = False)
 	train_outputs = read_data_from_txt(train_outputs, is_output = True, time_length = 245)
 	valid_inputs  = read_data_from_txt(valid_inputs, is_output = False)
 	valid_outputs = read_data_from_txt(valid_outputs, is_output = True, time_length = 245)
+	field_data    = read_data_from_txt(field_data, is_output=False)	
 	
 	data = {'train_inputs': train_inputs, 'train_outputs': train_outputs,
 	        'valid_inputs': valid_inputs, 'valid_outputs': valid_outputs}
