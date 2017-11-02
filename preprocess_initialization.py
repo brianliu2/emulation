@@ -21,6 +21,7 @@ def read_data_from_txt(dataName, is_output, time_length = None, data_type = np.f
 	        data_list.append(line_context)
 	
 	data = np.array(data_list, dtype = data_type)
+	time_length = data.shape[1]
 	
 	if is_output:
 		tspan = range(time_length)
@@ -54,14 +55,29 @@ def input_augment(inputs):
 	else:
 		print('Error: number of input points must be a positive integer.')
 	return input_aug_res
+	
+def aggregated_fcn(train_outputs, valid_outputs, total_weeks):
+	num_training_points = train_outputs.shape[1]
+	
+	aggregated_train_outputs = np.zeros((total_weeks, num_training_points))
+	aggregated_valid_outputs = np.zeros_like(aggregated_train_outputs)
+	
+	for t in range(total_weeks):
+		idx = range(t*7, t*7+7)
+		aggregated_train_outputs[t, :] = train_outputs[idx, :].sum(axis = 0)
+		aggregated_valid_outputs[t, :] = valid_outputs[idx, :].sum(axis = 0)
+	
+	return aggregated_train_outputs, aggregated_valid_outputs
 
 if __name__ == '__main__':
 	data_path = os.path.join('/Users/xliu/Documents/MRC/', 
 							   'Work/Program/emulator/marian/JASA_2014_code/')
 	train_input  = data_path + 'LHCDesign_training.txt'
-	train_output = data_path + 'Outputs_training.txt'
+	#train_output = data_path + 'Outputs_training.txt'
+	train_output = data_path + 'training_outputs_andre.txt'
 	valid_input  = data_path + 'LHCDesign_validation.txt'
-	valid_output = data_path + 'Outputs_validation.txt'
+	#valid_output = data_path + 'Outputs_validation.txt'
+	valid_output = data_path + 'validation_outputs_andre.txt'
 
 	train_input  = read_data_from_txt(train_input, is_output = False)
 	train_output = read_data_from_txt(train_output, is_output = True, time_length = 245)

@@ -26,8 +26,8 @@ plt.rcParams['ytick.labelsize'] = 20
 plt.rcParams['axes.titlesize'] = 20
 
 class emulator_cls(object):
-	def __init__(self, data, time_length, nugget = 0.5, const = 5, AR_order = 1, discount_factor = 0.9, \
-				  emulation_iter = 1200, emulation_burnin = 20, MH_within_Gibbs_iter = 25, \
+	def __init__(self, data, nugget = 0.5, const = 5, AR_order = 1, discount_factor = 0.9, \
+				  emulation_iter = 1200, emulation_burnin = 200, MH_within_Gibbs_iter = 25, \
 				  beta_init = 1, alpha_val = 1.999, cali_iter_factor = 100, cali_likeli_sampling_iter = 5):
 		self.train_inputs  = data['train_inputs']
 		self.train_outputs = data['train_outputs']
@@ -37,8 +37,8 @@ class emulator_cls(object):
 		self.num_train_inputs = self.train_inputs.shape[0]
 		self.dim_train_inputs = self.train_inputs.shape[1]
 		
-		self.time_length = time_length
-		self.tspan = range(time_length)		
+		self.train_time_length = self.train_outputs.shape[0] # train_outputs: T * N
+		self.train_tspan = range(self.train_time_length)
 		
 		self.nugget = 0.5
 		self.const  = 5
@@ -67,10 +67,10 @@ class emulator_cls(object):
 		self.emulation_burnin = emulation_burnin
 		self.MH_within_Gibbs_iter = MH_within_Gibbs_iter
 		
-		self.emulator_param = np.zeros((len(self._mu_0), len(self.tspan), self.emulation_iter))
-		self.V_mat = np.zeros((len(self.tspan), self.emulation_iter))
+		self.emulator_param = np.zeros((len(self._mu_0), len(self.train_tspan), self.emulation_iter))
+		self.V_mat = np.zeros((len(self.train_tspan), self.emulation_iter))
 		self.beta_mat = np.zeros((self.dim_train_inputs, self.emulation_iter))
-		self.Err_mat = np.zeros((len(self.tspan), self.num_train_inputs, self.emulation_iter))
+		self.Err_mat = np.zeros((len(self.train_tspan), self.num_train_inputs, self.emulation_iter))
 		
 		self.beta_cur = beta_init * np.ones((self.dim_train_inputs, 1))
 		self.beta_mat[:, 0] = self.beta_cur.ravel()
@@ -82,6 +82,7 @@ class emulator_cls(object):
 		self.cali_iter_factor = cali_iter_factor
 		self.sd_prop_vec = np.array([10.1365629, 0.6130522, 17,4841793, 0.5461787, 0.5820872, 0.553091])
 		self.cali_likeli_sampling_iter = cali_likeli_sampling_iter
+		#self.likelihood = likelihood
 #	def getCorrMat(self, inputs):
 #		num_inputs, dim_inputs = inputs.shape
 #		corrMat = np.zeros((num_inputs, num_inputs))
@@ -128,9 +129,21 @@ class emulator_cls(object):
 		score = gpparam_score_diffLogPrior_withProdTerm(corrMat, beta_t, train_inputs_norm, Err, var, AR_order)
 		return score
 		
-	def fit(self):
+	def fit(self, aggregated = False, total_weeks = None):
+		# if we want to use the aggregated weekly data, then further process the training/validation dataset
+		if aggregated:
+			if total_weeks is None:
+				raise ValueError('total weeks need to be specified.')
+			self.train_outputs, self.valid_outpus = aggregated_fcn(self.train_outputs, self.valid_outpus, total_weeks)
+			self.train_time_length = self.train_outputs.shape[0] # train_outputs: T * N
+			self.train_tspan = range(self.train_time_length)
+			self.train_outputs_log = log_trans(self.train_outputs, nugget = self.nugget, const = self.const)
+			self.valid_outputs_log = log_trans(self.valid_outpus, nugget = self.nugget, const = self.const)
+			
+		# main loop to fit emulator
 		for ifit in range(self.emulation_iter):
-			print(self.beta_cur)
+			print('Iter: {0}\tBeta:{1}'.format(ifit, self.beta_cur.ravel()))
+			#print(self.beta_cur)
 			corrMat = self.getCorrMat(self.train_inputs_norm)
 			mu_t, Cov_t, s_t, n_t = self._tvar_multivariate_G(corrMat)
 			var_t = self._sample_variance(n_t, s_t)
@@ -145,35 +158,47 @@ class emulator_cls(object):
 			self.Err_mat[:, :, ifit] = Err_t
 			self.beta_mat[:, ifit] = self.beta_cur.ravel()
 	
-	def calibrate(self, field_data, cali_iter_factor=100, prop_factor = 0.11):
-		param_posterior = calibrator(self.train_inputs_norm, self.emulator_param, self.V_mat, self.beta_mat, self.alpha, self.const, self.nugget, field_data, self.emulation_burnin, cali_iter_factor, self.sd_prop_vec, prop_factor, self.cali_likeli_sampling_iter)
+	def calibrate(self, field_data, start_field_t, end_field_t, likelihood, cali_iter_factor=100, prop_factor = 0.11):
+		param_posterior = calibrator(self.train_inputs, self.train_inputs_norm, self.train_outputs, self.train_outputs_log, self.emulator_param, self.V_mat, self.beta_mat, self.alpha, self.const, self.nugget, field_data, start_field_t, end_field_t, self.emulation_burnin, cali_iter_factor, self.sd_prop_vec, prop_factor, self.cali_likeli_sampling_iter, self.AR_order, likelihood, sampleZ_iter_num = 5)
 		return param_posterior
 		
 if __name__ == '__main__':
 	data_path = os.path.join('/Users/xliu/Documents/MRC/Work/Program/','emulator/python_version/emulation_python_ver/')
 	train_inputs  = data_path + 'LHCDesign_training.txt'
-	train_outputs = data_path + 'Outputs_training.txt'
+	#train_output = data_path + 'Outputs_training.txt'
+	train_outputs = data_path + 'training_outputs_andre.txt'
 	valid_inputs  = data_path + 'LHCDesign_validation.txt'
-	valid_outputs = data_path + 'Outputs_validation.txt'
+	#valid_output = data_path + 'Outputs_validation.txt'
+	valid_outputs = data_path + 'validation_outputs_andre.txt'
 	field_data    = data_path + 'andre_agg_estimates_London_python.txt'	
 	
 	train_inputs  = read_data_from_txt(train_inputs, is_output = False)
-	train_outputs = read_data_from_txt(train_outputs, is_output = True, time_length = 245)
+	train_outputs = read_data_from_txt(train_outputs, is_output = True)
 	valid_inputs  = read_data_from_txt(valid_inputs, is_output = False)
-	valid_outputs = read_data_from_txt(valid_outputs, is_output = True, time_length = 245)
+	valid_outputs = read_data_from_txt(valid_outputs, is_output = True)
 	field_data    = read_data_from_txt(field_data, is_output=False)	
 	
 	data = {'train_inputs': train_inputs, 'train_outputs': train_outputs,
 	        'valid_inputs': valid_inputs, 'valid_outputs': valid_outputs}
 									
-	emulator = emulator_cls(data, time_length = 245)
-	emulator.fit()
-	model_name = 'emulator.sav'
-	joblib.dump(emulator, model_name)
+	emulator = emulator_cls(data)
+	emulator.fit(aggregated=True, total_weeks = 47)
 	
-	# load model
-	#emulator_built = joblib.load(model_name)
-	#print(emulator_built.emulator_param.shape)
+	phi_4_025Perc = np.percentile(emulator_built.emulator_param[3, :, emulator_built.emulation_burnin:], 2.5, axis=1)
+	phi_4_50Perc = np.percentile(emulator_built.emulator_param[3, :, emulator_built.emulation_burnin:], 50, axis=1)
+	phi_4_975Perc = np.percentile(emulator_built.emulator_param[3, :, emulator_built.emulation_burnin:], 97.5, axis=1)	
+	
+	plt.plot(phi_4_025Perc);
+	plt.plot(phi_4_50Perc);
+	plt.plot(phi_4_975Perc);	
+	
+	model_name = 'emulator.sav'
+	joblib.dump(emulator, data_path+model_name)
+#	
+#	# load model
+#	emulator_built = joblib.load(model_name)
+#	print(emulator_built.emulator_param.shape)
+	param_posterior = emulator_built.calibrate(field_data, start_field_t = 5, end_field_t = 47, likelihood = 'negative binomial')
 	print('ok')
 
 
