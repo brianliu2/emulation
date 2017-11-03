@@ -69,8 +69,8 @@ class emulator_cls(object):
 		
 		self.emulator_param = np.zeros((len(self._mu_0), len(self.train_tspan), self.emulation_iter))
 		self.V_mat = np.zeros((len(self.train_tspan), self.emulation_iter))
-		self.beta_mat = np.zeros((self.dim_train_inputs, self.emulation_iter))
 		self.Err_mat = np.zeros((len(self.train_tspan), self.num_train_inputs, self.emulation_iter))
+		self.beta_mat = np.zeros((self.dim_train_inputs, self.emulation_iter))
 		
 		self.beta_cur = beta_init * np.ones((self.dim_train_inputs, 1))
 		self.beta_mat[:, 0] = self.beta_cur.ravel()
@@ -139,6 +139,9 @@ class emulator_cls(object):
 			self.train_tspan = range(self.train_time_length)
 			self.train_outputs_log = log_trans(self.train_outputs, nugget = self.nugget, const = self.const)
 			self.valid_outputs_log = log_trans(self.valid_outpus, nugget = self.nugget, const = self.const)
+			self.emulator_param = np.zeros((len(self._mu_0), len(self.train_tspan), self.emulation_iter))
+			self.V_mat = np.zeros((len(self.train_tspan), self.emulation_iter))
+			self.Err_mat = np.zeros((len(self.train_tspan), self.num_train_inputs, self.emulation_iter))
 			
 		# main loop to fit emulator
 		for ifit in range(self.emulation_iter):
@@ -180,25 +183,25 @@ if __name__ == '__main__':
 	
 	data = {'train_inputs': train_inputs, 'train_outputs': train_outputs,
 	        'valid_inputs': valid_inputs, 'valid_outputs': valid_outputs}
-									
+#									
 	emulator = emulator_cls(data)
 	emulator.fit(aggregated=True, total_weeks = 47)
-	
-	phi_4_025Perc = np.percentile(emulator_built.emulator_param[3, :, emulator_built.emulation_burnin:], 2.5, axis=1)
-	phi_4_50Perc = np.percentile(emulator_built.emulator_param[3, :, emulator_built.emulation_burnin:], 50, axis=1)
-	phi_4_975Perc = np.percentile(emulator_built.emulator_param[3, :, emulator_built.emulation_burnin:], 97.5, axis=1)	
-	
+#	
+	phi_4_025Perc = np.percentile(emulator.emulator_param[3, :, emulator.emulation_burnin:], 2.5, axis=1)
+	phi_4_50Perc = np.percentile(emulator.emulator_param[3, :, emulator.emulation_burnin:], 50, axis=1)
+	phi_4_975Perc = np.percentile(emulator.emulator_param[3, :, emulator.emulation_burnin:], 97.5, axis=1)	
+#	
 	plt.plot(phi_4_025Perc);
 	plt.plot(phi_4_50Perc);
 	plt.plot(phi_4_975Perc);	
-	
-	model_name = 'emulator.sav'
+
+	model_name = 'emulator_andre_data.sav'
 	joblib.dump(emulator, data_path+model_name)
 #	
 #	# load model
-#	emulator_built = joblib.load(model_name)
-#	print(emulator_built.emulator_param.shape)
-	param_posterior = emulator_built.calibrate(field_data, start_field_t = 5, end_field_t = 47, likelihood = 'negative binomial')
+	emulator_built = joblib.load(model_name)
+	print(emulator_built.emulator_param.shape)
+#	param_posterior = emulator_built.calibrate(field_data, start_field_t = 5, end_field_t = 47, likelihood = 'negative binomial')
 	print('ok')
 
 

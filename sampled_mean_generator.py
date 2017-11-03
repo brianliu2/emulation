@@ -53,8 +53,8 @@ def NB_sampledZGenerator(field_data, cali_iter, input_args_dict, nugget, const):
 		nb_dispersion_previous = input_args_dict['nb_dispersion']
 	
 	# 2. read-in other necessary input arguments
-	param_t = input_args_dict['param_t']
-	param_t_aug = input_args_dict['param_t_aug']
+	param_t = input_args_dict['param_temp']
+	param_t_aug = input_args_dict['param_temp_aug']
 	
 	train_inputs = input_args_dict['train_inputs']
 	train_inputs_aug = input_args_dict['train_inputs_aug']
@@ -153,9 +153,9 @@ def NB_sampledZGenerator(field_data, cali_iter, input_args_dict, nugget, const):
 			nb_dispersion_star = np.exp(log_nb_dispersion_star)
 			
 			# calculate the p(z|dispersion): log-gamma
-			for t in range(field_tspan):
-				log_pdf_z_given_dispersion[t-4, :] = log_pdf_z_given_dispersion_fcn(field_data[t-4, :], predMu[t, :], nb_dispersion)
-				log_pdf_z_given_dispersion_star[t-4, :] = log_pdf_z_given_dispersion_fcn(field_data[t-4, :], predMu[t, :], nb_dispersion_star)
+			for t in field_tspan:
+				log_pdf_z_given_dispersion[t-4] = log_pdf_z_given_dispersion_fcn(field_data[t-4, :], predMu[t, :], nb_dispersion)
+				log_pdf_z_given_dispersion_star[t-4] = log_pdf_z_given_dispersion_fcn(field_data[t-4, :], predMu[t, :], nb_dispersion_star)
 				
 			# calculate the prior
 			dispersion_prior = gamma.pdf(nb_dispersion, a = 0.01, scale = 100)
@@ -197,27 +197,27 @@ def NB_sampledZGenerator(field_data, cali_iter, input_args_dict, nugget, const):
 					
 					predMu_log_tPlus1[t-1, :] = predMu_log[t+1, :]
 					
-					mt_para_star_tPlus1 = np.dot(np.array([predMu_log[t, :], param_t_aug]), emulator_param_t[:, t+1])
+					mt_para_star_tPlus1 = np.dot(np.r_[predMu_log[t, :].ravel(), param_t_aug.ravel()], emulator_param_t[:, t+1])
 					
 					m_star_tPlus1[t-1, :] = mt_para_star_tPlus1 + np.dot(np.dot(rho.T, corrMat_train_inputs_inv), (train_outputs_log[t+1, :].T - mt_X_tPlus1))
 				# *********** END: we first deal with time stances t = 2:T-1, T will need the specical recipe	
 				
 				# =========== calculate the log-acceptance ========= #
-				if t != len_train_outputs:
+				if t != len_train_outputs-1:
 					if t in [1, 2, 3]:
 						# days 2, 3 and 4, which are not presented in field data
 						accpRate = -0.5 * (predMu_log_star[t, :] - mt[t, :])**2 / st[t, :] - 0.5 * (predMu_log_tPlus1[t-1, :] - m_star_tPlus1[t-1, :])**2 / s_tPlus1[t-1, :]\
 									+0.5 * (predMu_log[t, :] - mt[t, :])**2 / st[t, :] + 0.5 * (predMu_log_tPlus1[t-1, :] - m_tPlus1[t-1, :])**2 / s_tPlus1[t-1, :]
 					else:
 						# days: 5 - 46
-						log_pdf_z_given_dispersion_star[t-4, :] = np.where(predMu_star[t, :] < 0, -np.infty, log_pdf_z_given_dispersion_fcn(field_data[t-4, :], predMu_star[t, :], nb_dispersion))
-						accpRate = log_pdf_z_given_dispersion_star[t-4, :] - 0.5 * (predMu_log_star[t, :] - mt[t, :])**2 / st[t, :] - 0.5 * (predMu_log_tPlus1[t-1, :] - m_star_tPlus1[t-1, :])**2 / s_tPlus1[t-1, :]\
-									-log_pdf_z_given_dispersion[t-4, :] + 0.5 * (predMu_log[t, :] - mt[t, :])**2 / st[t, :] + 0.5 * (predMu_log_tPlus1[t-1, :] - m_tPlus1[t-1, :])**2 / s_tPlus1[t-1, :]
+						log_pdf_z_given_dispersion_star[t-4] = np.where(predMu_star[t, :] < 0, -np.infty, log_pdf_z_given_dispersion_fcn(field_data[t-4], predMu_star[t, :], nb_dispersion))
+						accpRate = log_pdf_z_given_dispersion_star[t-4] - 0.5 * (predMu_log_star[t, :] - mt[t, :])**2 / st[t, :] - 0.5 * (predMu_log_tPlus1[t-1, :] - m_star_tPlus1[t-1, :])**2 / s_tPlus1[t-1, :]\
+									-log_pdf_z_given_dispersion[t-4] + 0.5 * (predMu_log[t, :] - mt[t, :])**2 / st[t, :] + 0.5 * (predMu_log_tPlus1[t-1, :] - m_tPlus1[t-1, :])**2 / s_tPlus1[t-1, :]
 				else:
 					# day 47
-					log_pdf_z_given_dispersion_star[t-4, :] = np.where(predMu_star[t, :] < 0, -np.infty, log_pdf_z_given_dispersion_fcn(field_data[t-4, :], predMu_star[t, :], nb_dispersion))
-					accpRate = log_pdf_z_given_dispersion_star[t-4, :] - 0.5 * (predMu_log_star[t, :] - mt[t, :])**2 / st[t, :]\
-								-log_pdf_z_given_dispersion[t-4, :] + 0.5 * (predMu_log[t, :] - mt[t, :])**2 / st[t, :]
+					log_pdf_z_given_dispersion_star[t-4] = np.where(predMu_star[t, :] < 0, -np.infty, log_pdf_z_given_dispersion_fcn(field_data[t-4, :], predMu_star[t, :], nb_dispersion))
+					accpRate = log_pdf_z_given_dispersion_star[t-4] - 0.5 * (predMu_log_star[t, :] - mt[t, :])**2 / st[t, :]\
+								-log_pdf_z_given_dispersion[t-4] + 0.5 * (predMu_log[t, :] - mt[t, :])**2 / st[t, :]
 				# =========== END: calculate the log-acceptance ========= #
 							
 				if np.log(np.random.uniform(size = 1)) < accpRate:
@@ -320,6 +320,45 @@ def log_pdf_z_given_dispersion_fcn(z_t, mu_t, dispersion_t):
 							 r * np.log(1-p) + z_t * np.log(p)
 	
 	return log_pdf_z_dispersion
+
+def pdfMuLogGivenM_S_evaluate(param_aug, emulator_param_temp, V_temp, train_outputs_log, train_inputs_aug, rho_temp, field_tspan, corrMat_train_inputs_inv, AR_order, sampled_Z_log, weekly=True):
+	pdfMuLogGivenM_S = np.zeros_like(sampled_Z_log)
+	mt = np.zeros_like(sampled_Z_log)
+	st = np.zeros_like(sampled_Z_log)
+	
+	len_train_outputs = train_outputs_log.shape[0]
+	
+	for t in range(AR_order, len_train_outputs):
+		mt_para = np.dot(np.r_[sampled_Z_log[t-AR_order, :].ravel(), param_aug.ravel()], emulator_param_temp[:, t])
+		mt_X = np.dot(np.c_[train_outputs_log[t-AR_order, :].T.ravel(), train_inputs_aug], emulator_param_temp[:, t])
+		
+		mt[t, :] = mt_para + np.dot(np.dot(rho_temp.T, corrMat_train_inputs_inv), (train_outputs_log[t, :].T - mt_X))
+		
+		st[t, :] = V_temp[t] * (1 - np.dot(np.dot(rho_temp.T, corrMat_train_inputs_inv), rho_temp))
+		
+		st[t, :] = np.where(st[t, :] < 0, 0, st[t, :])
+		
+		pdfMuLogGivenM_S[t, :] = norm.pdf(sampled_Z_log[t, :], loc=mt[t, :], scale=np.sqrt(st[t, :]))
+
+	return pdfMuLogGivenM_S
+
+def MT_fcn(sampled_Z_log, train_outputs_log, emulator_param, corrMat_train_inputs_inv, rho, train_inputs_aug, param_aug, AR_order):
+	len_sampled_Z = sampled_Z_log.shape[0]
+	out_res = np.zeros((len_sampled_Z - AR_order, 1))
+	
+	for t in range(AR_order, len_sampled_Z):
+		mz = np.dot(np.r_[sampled_Z_log[t-AR_order, :].ravel(), param_aug.ravel()], emulator_param[:, t])
+		my = np.dot(np.c_[train_outputs_log[t-AR_order, :].T.ravel(), train_inputs_aug], emulator_param[:, t])
+		out_res[t-AR_order, :] = mz + np.dot(np.dot(rho.T, corrMat_train_inputs_inv), (train_outputs_log[t, :].T - my))
+	return out_res
+
+def ST_fcn(sampled_Z_log, V, corrMat_train_inputs_inv, rho, AR_order):
+	len_sampled_Z = sampled_Z_log.shape[0]
+	out_res = np.zeros((len_sampled_Z-AR_order, 1))
+	
+	for t in range(AR_order, len_sampled_Z):
+		out_res[t-1, :] = V[t] * (1 - np.dot(np.dot(rho.T, corrMat_train_inputs_inv), rho))
+	return out_res
 
 if __name__ == '__main__':
 	print('ok')
